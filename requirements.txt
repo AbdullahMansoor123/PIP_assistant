@@ -1,0 +1,4 @@
+llama3.2
+kokoro #TTS
+whisper # STT
+
