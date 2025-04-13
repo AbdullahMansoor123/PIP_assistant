@@ -1,4 +1,11 @@
-llama3.2
-kokoro #TTS
-whisper # STT
+llama3.2 # Text to text
+kokoro #Text to speech
+whisper # Speech to text
 
+torch
+git+https://github.com/huggingface/transformers
+git+https://github.com/huggingface/accelerate
+huggingface-hub
+
+sounddevice 
+scipy
