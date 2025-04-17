@@ -11,6 +11,9 @@ import soundfile as sf
 import whisper
 import time
 from kokoro import KPipeline
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 from ollama import generate
 
@@ -169,8 +172,94 @@ TEXT_FILENAME = 'user_answer.txt'
 AUDIO_FILENAME = 'user_answer.wav'
 SAMPLE_RATE = 44100
 
+def save_report_to_pdf(qa_dict, evaluation_summary, filename="Interview_Evaluation_Report.pdf"):
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, KeepTogether
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
 
-# Main GUI class
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="QTitle", fontSize=12, leading=16, spaceAfter=4, fontName='Helvetica-Bold'))
+    styles.add(ParagraphStyle(name="Answer", fontSize=10.5, leading=14, spaceAfter=10))
+    styles.add(ParagraphStyle(name="Meta", fontSize=9.5, leading=12, textColor=colors.grey))
+    styles.add(ParagraphStyle(name="CustomBullet", parent=styles["Normal"], leftIndent=15, bulletIndent=0, spaceBefore=6))
+    styles.add(ParagraphStyle(name="SectionHeader", fontSize=14, leading=18, spaceAfter=12, alignment=1))  # centered
+
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=48, bottomMargin=36)
+    story = []
+
+    story.append(Paragraph("Interview Evaluation Report", styles["Title"]))
+    story.append(Spacer(1, 24))
+
+    for idx, (question, (method, answer)) in enumerate(qa_dict.items(), 1):
+        # Create a bordered table-style card for each question-answer pair
+        data = [
+            [Paragraph(f"Q{idx}: {question}", styles["QTitle"])],
+            [Paragraph(f"<b>Response Method:</b> {'Voice (Transcribed)' if method == 'v' else 'Text'}", styles["Meta"])],
+            [Paragraph(answer, styles["Answer"])]
+        ]
+
+        table = Table(data, colWidths=[doc.width], hAlign="LEFT", style=TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.5, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+            ('BACKGROUND', (0,0), (0,0), colors.whitesmoke),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+            ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ]))
+
+        story.append(KeepTogether(table))
+        story.append(Spacer(1, 12))
+
+        # Insert page break every 5 questions
+        if idx % 5 == 0 and idx != len(qa_dict):
+            story.append(PageBreak())
+
+    # Page Break before Evaluation
+    story.append(PageBreak())
+
+    story.append(Paragraph("Final Evaluation Summary", styles["SectionHeader"]))
+    story.append(Spacer(1, 16))
+
+    # ---- Format Evaluation Text ---- #
+    def parse_evaluation_text(text):
+        lines = text.splitlines()
+        blocks = []
+
+        for line in lines:
+            if line.startswith("### **Overall Score**"):
+                blocks.append(Paragraph("🏅 <b>Overall Score</b>", styles["Heading2"]))
+            elif line.startswith("### **Summary Assessment of Suitability**"):
+                blocks.append(Paragraph("🧠 <b>Suitability Summary</b>", styles["Heading2"]))
+            elif line.startswith("### **Criteria Evaluations**"):
+                blocks.append(Spacer(1, 10))
+                blocks.append(Paragraph("📊 <b>Criteria Evaluations</b>", styles["Heading2"]))
+            elif line.startswith("### **Feedback**"):
+                blocks.append(Spacer(1, 12))
+                blocks.append(Paragraph("📝 <b>Feedback</b>", styles["Heading2"]))
+            elif line.startswith("#### **"):
+                blocks.append(Spacer(1, 6))
+                blocks.append(Paragraph(line.replace("#### **", "<b>").replace("**", "</b>"), styles["Heading3"]))
+            elif line.strip().startswith(("1. ", "2. ", "3. ", "4. ")):
+                blocks.append(Paragraph(line.strip(), styles["CustomBullet"]))
+            elif line.strip():
+                blocks.append(Paragraph(line.strip(), styles["Normal"]))
+            else:
+                blocks.append(Spacer(1, 6))
+        return blocks
+
+    story.extend(parse_evaluation_text(evaluation_summary))
+
+    doc.build(story)
+    print(f"✅ PDF Report saved as: {filename}")
+    return filename
+
+
+
+# Main App
 class InterviewApp:
     def __init__(self, root):
         self.root = root
@@ -210,7 +299,6 @@ class InterviewApp:
             widget.destroy()
 
         question = self.questions[self.current_index]
-
         tk.Label(self.frame, text=f"Question {self.current_index + 1}:", font=("Arial", 12, "bold")).pack(anchor="w", pady=(10, 5))
         tk.Label(self.frame, text=question, wraplength=400).pack(anchor="w")
         tk.Button(self.frame, text="🔊 Play Question Audio", command=lambda: self.play_audio_for_question(question)).pack(pady=5)
@@ -239,15 +327,9 @@ class InterviewApp:
 
     def toggle_input_method(self):
         method = self.input_method.get()
-        if method == "text":
-            self.text_input.config(state="normal")
-            self.start_record_btn.config(state="disabled")
-            self.stop_record_btn.config(state="disabled")
-        else:
-            self.text_input.delete("1.0", tk.END)
-            self.text_input.config(state="disabled")
-            self.start_record_btn.config(state="normal")
-            self.stop_record_btn.config(state="normal")
+        self.text_input.config(state="normal" if method == "text" else "disabled")
+        self.start_record_btn.config(state="disabled" if method == "text" else "normal")
+        self.stop_record_btn.config(state="disabled" if method == "text" else "normal")
 
     def start_recording(self):
         self.recording = True
@@ -321,15 +403,24 @@ class InterviewApp:
     def show_report(self, report):
         for widget in self.frame.winfo_children():
             widget.destroy()
+
         tk.Label(self.frame, text="Evaluation Report", font=("Arial", 14, "bold")).pack(pady=10)
         text_box = tk.Text(self.frame, wrap="word", height=20)
         text_box.insert(tk.END, report)
         text_box.config(state="disabled")
         text_box.pack(expand=True, fill="both")
-        tk.Button(self.frame, text="Close", command=self.root.quit).pack(pady=10)
 
-# Run the GUI
+        def save_pdf():
+            filename = save_report_to_pdf(self.qa_dict, report)
+            messagebox.showinfo("Saved", f"PDF saved as: {filename}")
+
+        tk.Button(self.frame, text="💾 Save as PDF", command=save_pdf).pack(pady=5)
+        tk.Button(self.frame, text="Close", command=self.root.quit).pack(pady=5)
+
+
+# Launch app
 if __name__ == "__main__":
     root = tk.Tk()
     app = InterviewApp(root)
     root.mainloop()
+    
