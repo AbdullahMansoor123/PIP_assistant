@@ -1,2 +1,4 @@
 download/*
 .wav*
+user_answer.txt
+.env

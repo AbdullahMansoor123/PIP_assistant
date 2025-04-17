@@ -9,3 +9,11 @@ huggingface-hub
 
 sounddevice 
 scipy
+
+pygame
+
+soundfile
+
+numpy
+
+reportlab
