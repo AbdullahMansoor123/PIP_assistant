@@ -264,22 +264,47 @@ class InterviewApp:
     def __init__(self, root):
         self.root = root
         self.root.title("AI Interview Assistant")
+        self.root.minsize(600, 400)
+        self.root.resizable(True, True)
+        self.root.update()
+        self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
+        self.center_window()  # center app box
         self.questions = []
         self.qa_dict = {}
         self.current_index = 0
         self.recording = False
         self.frames = []
+        self.audio_cache = {}  # cache question audio
+
 
         self.setup_ui()
+        self.center_window()
         pygame.mixer.init()
 
     def setup_ui(self):
         self.frame = tk.Frame(self.root, padx=20, pady=20)
         self.frame.pack(expand=True, fill='both')
+
+        # Load logo image
+        self.logo_image = tk.PhotoImage(file="logo.png")  # Keep a reference to avoid garbage collection
+        logo_label = tk.Label(self.frame, image=self.logo_image)
+        logo_label.pack(pady=(0, 10))  # Add some spacing below
+
         self.status_label = tk.Label(self.frame, text="Click 'Start Interview' to begin.")
         self.status_label.pack(pady=10)
+
         self.start_button = tk.Button(self.frame, text="Start Interview", command=self.start_interview)
         self.start_button.pack(pady=5)
+
+    def center_window(self):
+        self.root.update_idletasks()
+        w = self.root.winfo_width()
+        h = self.root.winfo_height()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width // 2) - (w // 2)
+        y = (screen_height // 2) - (h // 2)
+        self.root.geometry(f"+{x}+{y}")
 
     def start_interview(self):
         self.start_button.config(state="disabled")
@@ -353,10 +378,24 @@ class InterviewApp:
             self.frames.append(indata.copy())
 
     def play_audio_for_question(self, question):
-        audio_path = "temp_question.wav"
-        ask_question_audio(question, audio_path)
+        # Create a safe filename from the question index
+        audio_path = f"question_audio_{self.current_index}.wav"
+
+        # Only generate audio if it hasn't been cached yet
+        if question not in self.audio_cache:
+            ask_question_audio(question, audio_path)
+            self.audio_cache[question] = audio_path
+        else:
+            audio_path = self.audio_cache[question]
+
+        # Stop any current playback
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+
+        # Load and play the cached/generated audio
         pygame.mixer.music.load(audio_path)
         pygame.mixer.music.play()
+
 
     def submit_answer(self):
         method = self.input_method.get()
