@@ -1,5 +1,6 @@
 
 import tkinter as tk
+from tkinter import ttk
 from tkinter import messagebox
 import threading
 import os
@@ -84,7 +85,7 @@ def voice_2_txt(audio_path='user_answer.wav', model_size='base'):
     model = whisper.load_model(model_size)
 
     print(f"Converting Voice to Text: '{audio_path}'...")
-    result = model.transcribe(audio=audio_path)
+    result = model.transcribe(audio=audio_path, fp16=False)
     
     candidate_response = result["text"]
     print("Voice to Test Conversion Complete!")
@@ -263,7 +264,7 @@ def save_report_to_pdf(qa_dict, evaluation_summary, filename="Interview_Evaluati
 class InterviewApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("AI Interview Assistant")
+        self.root.title("Personal Interview Preparation Assistant")
         self.root.minsize(600, 400)
         self.root.resizable(True, True)
         self.root.update()
@@ -275,6 +276,7 @@ class InterviewApp:
         self.recording = False
         self.frames = []
         self.audio_cache = {}  # cache question audio
+        self.loading_image = tk.PhotoImage(file="report_making.gif")  # only first frame shown unless animated support
 
 
         self.setup_ui()
@@ -293,7 +295,8 @@ class InterviewApp:
         self.status_label = tk.Label(self.frame, text="Click 'Start Interview' to begin.")
         self.status_label.pack(pady=10)
 
-        self.start_button = tk.Button(self.frame, text="Start Interview", command=self.start_interview)
+        self.start_button = tk.Button(self.frame, text="Start Interview", 
+                                      command=self.start_interview, font=("Arial", 12, "bold"), bg="blue", fg="white")
         self.start_button.pack(pady=5)
 
     def center_window(self):
@@ -308,12 +311,23 @@ class InterviewApp:
 
     def start_interview(self):
         self.start_button.config(state="disabled")
-        self.status_label.config(text="Generating questions...")
+        self.status_label.config(text="Generating interview questions...")
+
+        # Add progress bar
+        self.progress_bar = ttk.Progressbar(self.frame, mode="indeterminate")
+        self.progress_bar.pack(pady=10)
+        self.progress_bar.start()
+
         threading.Thread(target=self.load_questions).start()
+
 
     def load_questions(self):
         self.questions = generate_job_questions("jd.txt")
+        
+        # Remove progress bar on completion
+        self.root.after(0, lambda: self.progress_bar.pack_forget())
         self.root.after(0, self.show_question)
+
 
     def show_question(self):
         if self.current_index >= len(self.questions):
@@ -324,31 +338,104 @@ class InterviewApp:
             widget.destroy()
 
         question = self.questions[self.current_index]
-        tk.Label(self.frame, text=f"Question {self.current_index + 1}:", font=("Arial", 12, "bold")).pack(anchor="w", pady=(10, 5))
-        tk.Label(self.frame, text=question, wraplength=400).pack(anchor="w")
-        tk.Button(self.frame, text="🔊 Play Question Audio", command=lambda: self.play_audio_for_question(question)).pack(pady=5)
+        tk.Label(
+            self.frame, 
+            text=f"Question {self.current_index + 1}:", 
+            font=("Arial", 14, "bold")
+        ).pack(anchor="w", pady=(10, 5))
+
+        tk.Label(
+            self.frame, 
+            text=question, 
+            wraplength=500, 
+            font=("Arial", 12)
+        ).pack(anchor="w", pady=(0, 10))
+
+        tk.Button(
+            self.frame, 
+            text="🔊 Play Question Audio", 
+            command=lambda: self.play_audio_for_question(question), 
+            font=("Arial", 12)
+        ).pack(pady=5)
+
+            # Input method selection frame
+        method_frame = tk.LabelFrame(
+            self.frame, 
+            text="Choose Your Answer Method", 
+            font=("Arial", 12, "bold"), 
+            padx=10, 
+            pady=10, 
+            labelanchor="n", 
+            fg="blue"
+        )
+        method_frame.pack(pady=10, fill="x")
 
         self.input_method = tk.StringVar(value="text")
-        tk.Radiobutton(self.frame, text="Text", variable=self.input_method, value="text", command=self.toggle_input_method).pack(anchor="w")
-        tk.Radiobutton(self.frame, text="Voice", variable=self.input_method, value="voice", command=self.toggle_input_method).pack(anchor="w")
 
-        self.text_input = tk.Text(self.frame, height=4, width=50)
+        tk.Radiobutton(
+            method_frame, 
+            text="📝 Text Input", 
+            variable=self.input_method, 
+            value="text", 
+            command=self.toggle_input_method, 
+            font=("Arial", 12),
+            padx=10, 
+            pady=5
+        ).pack(anchor="w")
+
+        tk.Radiobutton(
+            method_frame, 
+            text="🎤 Voice Input", 
+            variable=self.input_method, 
+            value="voice", 
+            command=self.toggle_input_method, 
+            font=("Arial", 12),
+            padx=10, 
+            pady=5
+        ).pack(anchor="w")
+
+
+        self.text_input = tk.Text(self.frame, height=5, width=60, font=("Arial", 12))
         self.text_input.pack(pady=5)
 
         self.record_frame = tk.Frame(self.frame)
-        self.start_record_btn = tk.Button(self.record_frame, text="🎙️ Start Recording", command=self.start_recording)
-        self.stop_record_btn = tk.Button(self.record_frame, text="🛑 Stop Recording", command=self.stop_recording)
+        self.start_record_btn = tk.Button(
+            self.record_frame, 
+            text="🎙️ Start Recording", 
+            command=self.start_recording, 
+            font=("Arial", 12),
+            bg = "#ADD8E6"
+        )
+        self.stop_record_btn = tk.Button(
+            self.record_frame, 
+            text="🛑 Stop Recording", 
+            command=self.stop_recording, 
+            font=("Arial", 12),
+            bg = "#FFB3B3"
+        )
         self.start_record_btn.pack(side="left", padx=5)
         self.stop_record_btn.pack(side="left", padx=5)
         self.record_frame.pack(pady=5)
 
-        self.submit_button = tk.Button(self.frame, text="Submit Answer", command=self.submit_answer)
-        self.submit_button.pack(pady=10)
+        # Highlighted and Larger Submit Button
+        self.submit_button = tk.Button(
+            self.frame, 
+            text="✅ Submit Answer", 
+            command=self.submit_answer,
+            bg="green", 
+            fg="white", 
+            font=("Arial", 14, "bold"),
+            padx=10, 
+            pady=5
+        )
+        self.submit_button.pack(pady=15)
 
-        self.status_label = tk.Label(self.frame, text="")
+        self.status_label = tk.Label(self.frame, text="", font=("Arial", 12))
         self.status_label.pack(pady=5)
 
         self.toggle_input_method()
+
+
 
     def toggle_input_method(self):
         method = self.input_method.get()
@@ -432,12 +519,28 @@ class InterviewApp:
     def finish_interview(self):
         for widget in self.frame.winfo_children():
             widget.destroy()
+
         tk.Label(self.frame, text="Generating evaluation report...", font=("Arial", 12)).pack(pady=10)
+
+        # ⏳ Show loading image
+        self.loading_label = tk.Label(self.frame, image=self.loading_image)
+        self.loading_label.pack(pady=10)
+
+        # ⏳ Progress bar
+        self.progress_bar = ttk.Progressbar(self.frame, mode="indeterminate")
+        self.progress_bar.pack(pady=10)
+        self.progress_bar.start()
+
         self.root.after(100, lambda: threading.Thread(target=self.display_report).start())
+
 
     def display_report(self):
         report = evaluate_responses("jd.txt", self.qa_dict)
+
+        # Remove progress bar before showing report
+        self.root.after(0, lambda: self.progress_bar.pack_forget())
         self.root.after(0, lambda: self.show_report(report))
+
 
     def show_report(self, report):
         for widget in self.frame.winfo_children():
@@ -453,8 +556,10 @@ class InterviewApp:
             filename = save_report_to_pdf(self.qa_dict, report)
             messagebox.showinfo("Saved", f"PDF saved as: {filename}")
 
-        tk.Button(self.frame, text="💾 Save as PDF", command=save_pdf).pack(pady=5)
-        tk.Button(self.frame, text="Close", command=self.root.quit).pack(pady=5)
+        tk.Button(self.frame, text="💾 Save as PDF", command=save_pdf, 
+                  bg='green',fg="white", font=("Arial", 12)).pack(pady=10,padx=5)
+        tk.Button(self.frame, text="Close", command=self.root.quit, 
+                  bg="red", fg="white", font=("Arial", 12)).pack(pady=10,padx=5)
 
 
 # Launch app
